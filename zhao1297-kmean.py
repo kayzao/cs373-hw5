@@ -35,13 +35,11 @@ def preprocess_for_clustering(df: pd.DataFrame):
     """
     df_proc = df.copy()
 
-    # ---- Handle missing values ----
     # Only 'total_bedrooms' has missing values; fill them with the median
     na_before = df_proc["total_bedrooms"].isna().sum()
     median_bedrooms = df_proc["total_bedrooms"].median()
     df_proc["total_bedrooms"] = df_proc["total_bedrooms"].fillna(median_bedrooms)
 
-    # ---- Encode categorical feature ----
     # One-hot encode 'ocean_proximity' so that all features are numeric
     dummies = pd.get_dummies(df_proc["ocean_proximity"], prefix="ocean")
     df_proc = pd.concat([df_proc, dummies], axis=1)
@@ -95,7 +93,7 @@ def kmeans(X: np.ndarray, k: int, max_iter: int = 300, tol: float = 1e-4,
         labels    : (n_samples,) cluster assignments in {0, ..., k-1}
         inertia   : sum of squared distances to assigned centroids
     """
-    n_samples = X.shape
+    n_samples, n_features = X.shape
     rng = np.random.default_rng(random_state)
 
     # Initialize centroids by choosing k random distinct points
@@ -129,7 +127,7 @@ def kmeans(X: np.ndarray, k: int, max_iter: int = 300, tol: float = 1e-4,
         centroids = new_centroids
 
         if max_shift < tol:
-            # print(f"k-means converged in {it+1} iterations.")
+            print(f"k-means converged in {it+1} iterations.")
             break
 
     # Compute inertia (sum of squared distances to assigned centroids)
@@ -137,7 +135,6 @@ def kmeans(X: np.ndarray, k: int, max_iter: int = 300, tol: float = 1e-4,
     inertia = np.sum(np.sum(diff_final ** 2, axis=1))
 
     return centroids, labels, inertia
-
 
 def main():
     if len(sys.argv) < 3:
@@ -151,7 +148,7 @@ def main():
     # Read the dataset
     df = pd.read_csv(csv_path)
 
-    # 9 original feature columns (for EDA only)
+    # 9 original feature columns
     feature_cols_for_eda = [
         "longitude",
         "latitude",
