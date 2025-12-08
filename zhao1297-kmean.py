@@ -78,17 +78,80 @@ def preprocess_for_clustering(df: pd.DataFrame):
     # Return as numpy array for later k-means implementation
     return X_norm_df.to_numpy(), feature_cols
 
+def kmeans(X: np.ndarray, k: int, max_iter: int = 300, tol: float = 1e-4,
+           random_state: int | None = None):
+    """
+    Basic k-means implementation (no sklearn).
+
+    Args:
+        X : (n_samples, n_features) data matrix
+        k : number of clusters
+        max_iter : maximum number of iterations
+        tol : convergence tolerance on centroid movement
+        random_state : seed for reproducible initialization
+
+    Returns:
+        centroids : (k, n_features) cluster centers
+        labels    : (n_samples,) cluster assignments in {0, ..., k-1}
+        inertia   : sum of squared distances to assigned centroids
+    """
+    n_samples = X.shape
+    rng = np.random.default_rng(random_state)
+
+    # Initialize centroids by choosing k random distinct points
+    indices = rng.choice(n_samples, size=k, replace=False)
+    centroids = X[indices].copy()
+
+    # Initialize labels to avoid undefined variable
+    labels = np.zeros(n_samples, dtype=int)
+
+    for it in range(max_iter):
+        # Compute squared distances to each centroid: shape (n_samples, k)
+        diff = X[:, None, :] - centroids[None, :, :]
+        distances = np.sum(diff ** 2, axis=2)
+
+        # Assign each point to closest centroid
+        labels = np.argmin(distances, axis=1)
+
+        # Update centroids
+        new_centroids = np.zeros_like(centroids)
+        for j in range(k):
+            mask = (labels == j)
+            if np.any(mask):
+                new_centroids[j] = X[mask].mean(axis=0)
+            else:
+                # Empty cluster: reinitialize to a random data point
+                new_centroids[j] = X[rng.integers(0, n_samples)]
+
+        # Check convergence (max centroid shift)
+        shifts = np.linalg.norm(new_centroids - centroids, axis=1)
+        max_shift = shifts.max()
+        centroids = new_centroids
+
+        if max_shift < tol:
+            # print(f"k-means converged in {it+1} iterations.")
+            break
+
+    # Compute inertia (sum of squared distances to assigned centroids)
+    diff_final = X - centroids[labels]
+    inertia = np.sum(np.sum(diff_final ** 2, axis=1))
+
+    return centroids, labels, inertia
+
+
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python netid-kmean.py housing.csv [output_dir]")
+    if len(sys.argv) < 3:
+        print("Usage: python netid-kmean.py housing.csv output_dir")
         sys.exit(1)
 
     csv_path = sys.argv[1]
+    output_dir = sys.argv[2]
+    os.makedirs(output_dir, exist_ok=True)
 
     # Read the dataset
     df = pd.read_csv(csv_path)
 
-    # 9 feature columns (treat median_house_value as the target/label)
+    # 9 original feature columns (for EDA only)
     feature_cols_for_eda = [
         "longitude",
         "latitude",
@@ -101,12 +164,29 @@ def main():
         "ocean_proximity",
     ]
 
-    # Q1: exploratory data analysis
     run_eda(df, feature_cols_for_eda)
 
-    # Q2: handle missing values & normalize features
     X_norm, cluster_features = preprocess_for_clustering(df)
-    # X_norm and cluster_features will be used later for your k-means implementation
+
+    k = 5  # example choice; will later loop over k for silhouette/elbow
+    centroids, labels, inertia = kmeans(X_norm, k=k, random_state=42)
+
+    unique, counts = np.unique(labels, return_counts=True)
+    print("=== k-means clustering result ===")
+    print(f"k = {k}")
+    print(f"Inertia (sum of squared distances): {inertia:.4f}")
+    print("Cluster sizes:")
+    for cid, cnt in zip(unique, counts):
+        print(f"  Cluster {cid}: {cnt} points")
+
+    # (Optional) save a small log to the output directory
+    log_path = os.path.join(output_dir, "kmeans_summary.txt")
+    with open(log_path, "w") as f:
+        f.write(f"k-means summary (k={k})\n")
+        f.write(f"Inertia: {inertia:.4f}\n")
+        f.write("Cluster sizes:\n")
+        for cid, cnt in zip(unique, counts):
+            f.write(f"  Cluster {cid}: {cnt} points\n")
 
 
 if __name__ == "__main__":
