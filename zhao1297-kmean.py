@@ -236,19 +236,58 @@ def silhouette_analysis(X: np.ndarray, k_values, output_dir: str,
 
     return list(k_values), scores
 
+
+def elbow_analysis(X: np.ndarray, k_values, output_dir: str,
+                   random_state: int = 42):
+    """
+    Compute WCSS (inertia) for each k and use KneeLocator to find the elbow.
+    """
+    wcss = []
+
+    print("=== Elbow analysis ===")
+    for k in k_values:
+        print(f"Running k-means for k = {k} ...")
+        _, _, inertia = kmeans(X, k=k, random_state=random_state)
+        wcss.append(inertia)
+        print(f"  WCSS (inertia): {inertia:.4f}")
+
+    # Plot WCSS vs k
+    plt.figure()
+    plt.plot(list(k_values), wcss, marker="o")
+    plt.xlabel("Number of clusters (k)")
+    plt.ylabel("Within-cluster sum of squares (WCSS)")
+    plt.title("Elbow method for k-means clustering")
+    plt.grid(True)
+    plt.tight_layout()
+
+    elbow_plot_path = os.path.join(output_dir, "elbow_wcss.png")
+    plt.savefig(elbow_plot_path)
+    plt.close()
+    print(f"Elbow plot saved to: {elbow_plot_path}")
+
+    # Use KneeLocator to find elbow
+    k_list = list(k_values)
+    kl = KneeLocator(k_list, wcss, curve="convex", direction="decreasing")
+    elbow_k = kl.knee
+    if elbow_k is not None:
+        print(f"KneeLocator detected elbow at k = {elbow_k}\n")
+    else:
+        print("KneeLocator did not find a clear elbow.\n")
+
+    return k_list, wcss, elbow_k
+
+
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python netid-kmean.py housing.csv output_dir")
+        print("Usage: python zhao1297-kmean.py housing.csv output_dir")
         sys.exit(1)
 
     csv_path = sys.argv[1]
     output_dir = sys.argv[2]
     os.makedirs(output_dir, exist_ok=True)
 
-    # Read the dataset
     df = pd.read_csv(csv_path)
 
-    # 9 original feature columns (for EDA only)
     feature_cols_for_eda = [
         "longitude",
         "latitude",
@@ -265,29 +304,42 @@ def main():
 
     X_norm, cluster_features = preprocess_for_clustering(df)
 
-    k_values = range(2, 16)  # k = 2..10
-    ks, scores = silhouette_analysis(X_norm, k_values, output_dir)
+    # Range of k values to test
+    k_values = range(2, 11)
 
-    # Choose best k as one with maximum silhouette score
-    best_idx = int(np.argmax(scores))
-    best_k = ks[best_idx]
-    print(f"Best k according to silhouette analysis: k = {best_k}, score = {scores[best_idx]:.4f}\n")
+    # Silhouette analysis
+    ks_sil, sil_scores = silhouette_analysis(X_norm, k_values, output_dir)
+    best_sil_idx = int(np.argmax(sil_scores))
+    best_k_sil = ks_sil[best_sil_idx]
+    print(f"Best k by silhouette: k = {best_k_sil}, score = {sil_scores[best_sil_idx]:.4f}\n")
 
-    # Run final k-means with best_k and summarize clusters
-    centroids, labels, inertia = kmeans(X_norm, k=best_k, random_state=42)
+    # Elbow analysis
+    ks_elbow, wcss, elbow_k = elbow_analysis(X_norm, k_values, output_dir)
+
+    # Compare the two
+    print("=== Comparison of Silhouette vs Elbow ===")
+    print(f"Silhouette best k: {best_k_sil}")
+    if elbow_k is not None:
+        print(f"Elbow best k (KneeLocator): {elbow_k}")
+    else:
+        print("Elbow method did not produce a clear knee (knee=None).")
+    print()
+
+    # Choose one k for final clustering (here we stick with silhouette)
+    final_k = best_k_sil if elbow_k is None else best_k_sil
+    centroids, labels, inertia = kmeans(X_norm, k=final_k, random_state=42)
 
     unique, counts = np.unique(labels, return_counts=True)
     print("=== Final k-means clustering result ===")
-    print(f"k = {best_k}")
+    print(f"k = {final_k}")
     print(f"Inertia (sum of squared distances): {inertia:.4f}")
     print("Cluster sizes:")
     for cid, cnt in zip(unique, counts):
         print(f"  Cluster {cid}: {cnt} points")
 
-    # Save summary to file
     log_path = os.path.join(output_dir, "kmeans_summary.txt")
     with open(log_path, "w") as f:
-        f.write(f"k-means summary (k={best_k})\n")
+        f.write(f"k-means summary (k={final_k})\n")
         f.write(f"Inertia: {inertia:.4f}\n")
         f.write("Cluster sizes:\n")
         for cid, cnt in zip(unique, counts):
