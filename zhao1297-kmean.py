@@ -136,6 +136,95 @@ def kmeans(X: np.ndarray, k: int, max_iter: int = 300, tol: float = 1e-4,
 
     return centroids, labels, inertia
 
+def silhouette_score_custom(X: np.ndarray, labels: np.ndarray) -> float:
+    """
+    Compute the average silhouette coefficient for a clustering.
+
+    X      : (n_samples, n_features)
+    labels : (n_samples,) with cluster ids {0, ..., k-1}
+    """
+    n_samples = X.shape[0]
+    unique_labels = np.unique(labels)
+    k = unique_labels.size
+
+    # Precompute indices for each cluster
+    clusters = [np.where(labels == c)[0] for c in unique_labels]
+
+    sil_values = np.zeros(n_samples, dtype=float)
+
+    for i in range(n_samples):
+        c_i = labels[i]
+        # cluster index in clusters list
+        c_idx = np.where(unique_labels == c_i)[0][0]
+        own_indices = clusters[c_idx]
+
+        # --- a(i): mean distance to own cluster ---
+        if own_indices.size == 1:
+            a_i = 0.0
+        else:
+            # distances to all points in same cluster
+            Xi = X[i]
+            X_own = X[own_indices]
+            dists_own = np.linalg.norm(X_own - Xi, axis=1)
+            # exclude self (distance 0)
+            a_i = dists_own[dists_own > 0].mean()
+
+        # --- b(i): min mean distance to other clusters ---
+        b_i = np.inf
+        for j_idx, idxs in enumerate(clusters):
+            if j_idx == c_idx:
+                continue
+            X_other = X[idxs]
+            dists_other = np.linalg.norm(X_other - X[i], axis=1)
+            mean_other = dists_other.mean()
+            if mean_other < b_i:
+                b_i = mean_other
+
+        # silhouette for point i
+        denom = max(a_i, b_i)
+        if denom == 0:
+            sil_values[i] = 0.0
+        else:
+            sil_values[i] = (b_i - a_i) / denom
+
+    return sil_values.mean()
+
+
+def silhouette_analysis(X: np.ndarray, k_values, output_dir: str,
+                        random_state: int = 42):
+    """
+    Run k-means for each k in k_values, compute average silhouette score,
+    and save a plot of score vs k.
+
+    Returns:
+        ks (list[int]), scores (list[float])
+    """
+    scores = []
+
+    print("=== Silhouette analysis ===")
+    for k in k_values:
+        print(f"Running k-means for k = {k} ...")
+        _, labels, _ = kmeans(X, k=k, random_state=random_state)
+        score = silhouette_score_custom(X, labels)
+        scores.append(score)
+        print(f"  Silhouette score: {score:.4f}")
+
+    # Plot silhouette scores vs k
+    plt.figure()
+    plt.plot(k_values, scores, marker="o")
+    plt.xlabel("Number of clusters (k)")
+    plt.ylabel("Average silhouette coefficient")
+    plt.title("Silhouette analysis for k-means clustering")
+    plt.grid(True)
+    plt.tight_layout()
+
+    plot_path = os.path.join(output_dir, "silhouette_scores.png")
+    plt.savefig(plot_path)
+    plt.close()
+
+    print(f"Silhouette scores plot saved to: {plot_path}\n")
+
+    return list(k_values), scores
 def main():
     if len(sys.argv) < 3:
         print("Usage: python netid-kmean.py housing.csv output_dir")
@@ -148,7 +237,7 @@ def main():
     # Read the dataset
     df = pd.read_csv(csv_path)
 
-    # 9 original feature columns
+    # 9 original feature columns (for EDA only)
     feature_cols_for_eda = [
         "longitude",
         "latitude",
@@ -165,21 +254,29 @@ def main():
 
     X_norm, cluster_features = preprocess_for_clustering(df)
 
-    k = 5  # example choice; will later loop over k for silhouette/elbow
-    centroids, labels, inertia = kmeans(X_norm, k=k, random_state=42)
+    k_values = range(2, 11)  # k = 2..10
+    ks, scores = silhouette_analysis(X_norm, k_values, output_dir)
+
+    # Choose best k as one with maximum silhouette score
+    best_idx = int(np.argmax(scores))
+    best_k = ks[best_idx]
+    print(f"Best k according to silhouette analysis: k = {best_k}, score = {scores[best_idx]:.4f}\n")
+
+    # Run final k-means with best_k and summarize clusters
+    centroids, labels, inertia = kmeans(X_norm, k=best_k, random_state=42)
 
     unique, counts = np.unique(labels, return_counts=True)
-    print("=== k-means clustering result ===")
-    print(f"k = {k}")
+    print("=== Final k-means clustering result ===")
+    print(f"k = {best_k}")
     print(f"Inertia (sum of squared distances): {inertia:.4f}")
     print("Cluster sizes:")
     for cid, cnt in zip(unique, counts):
         print(f"  Cluster {cid}: {cnt} points")
 
-    # (Optional) save a small log to the output directory
+    # Save summary to file
     log_path = os.path.join(output_dir, "kmeans_summary.txt")
     with open(log_path, "w") as f:
-        f.write(f"k-means summary (k={k})\n")
+        f.write(f"k-means summary (k={best_k})\n")
         f.write(f"Inertia: {inertia:.4f}\n")
         f.write("Cluster sizes:\n")
         for cid, cnt in zip(unique, counts):
