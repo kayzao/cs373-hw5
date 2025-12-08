@@ -1,8 +1,9 @@
-k-means summary (k=5)
-Inertia: 146846.3596
+k-means summary (k=6)
+Inertia: 130477.2252
 Cluster sizes:
-  Cluster 0: 8778 points
-  Cluster 1: 5230 points
-  Cluster 2: 2215 points
-  Cluster 3: 3076 points
-  Cluster 4: 1341 points
+  Cluster 0: 8500 points
+  Cluster 1: 479 points
+  Cluster 2: 1244 points
+  Cluster 3: 2579 points
+  Cluster 4: 1787 points
+  Cluster 5: 6051 points

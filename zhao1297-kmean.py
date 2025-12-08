@@ -191,27 +191,37 @@ def silhouette_score_custom(X: np.ndarray, labels: np.ndarray) -> float:
 
 
 def silhouette_analysis(X: np.ndarray, k_values, output_dir: str,
-                        random_state: int = 42):
+                        random_state: int = 42, max_samples: int = 2000):
     """
-    Run k-means for each k in k_values, compute average silhouette score,
-    and save a plot of score vs k.
+    Run k-means for each k in k_values, compute average silhouette score
+    (on a random subset of at most max_samples points), and save a plot.
 
     Returns:
         ks (list[int]), scores (list[float])
     """
     scores = []
+    rng = np.random.default_rng(random_state)
 
     print("=== Silhouette analysis ===")
+    n_samples = X.shape[0]
+
     for k in k_values:
         print(f"Running k-means for k = {k} ...")
         _, labels, _ = kmeans(X, k=k, random_state=random_state)
-        score = silhouette_score_custom(X, labels)
+
+        sample_size = min(max_samples, n_samples)
+        sample_idx = rng.choice(n_samples, size=sample_size, replace=False)
+        X_sub = X[sample_idx]
+        labels_sub = labels[sample_idx]
+
+        print(f"  Computing silhouette on {sample_size} sampled points...")
+        score = silhouette_score_custom(X_sub, labels_sub)
         scores.append(score)
         print(f"  Silhouette score: {score:.4f}")
 
     # Plot silhouette scores vs k
     plt.figure()
-    plt.plot(k_values, scores, marker="o")
+    plt.plot(list(k_values), scores, marker="o")
     plt.xlabel("Number of clusters (k)")
     plt.ylabel("Average silhouette coefficient")
     plt.title("Silhouette analysis for k-means clustering")
@@ -225,6 +235,7 @@ def silhouette_analysis(X: np.ndarray, k_values, output_dir: str,
     print(f"Silhouette scores plot saved to: {plot_path}\n")
 
     return list(k_values), scores
+
 def main():
     if len(sys.argv) < 3:
         print("Usage: python netid-kmean.py housing.csv output_dir")
@@ -254,7 +265,7 @@ def main():
 
     X_norm, cluster_features = preprocess_for_clustering(df)
 
-    k_values = range(2, 11)  # k = 2..10
+    k_values = range(2, 16)  # k = 2..10
     ks, scores = silhouette_analysis(X_norm, k_values, output_dir)
 
     # Choose best k as one with maximum silhouette score
