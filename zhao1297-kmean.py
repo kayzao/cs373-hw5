@@ -277,6 +277,62 @@ def elbow_analysis(X: np.ndarray, k_values, output_dir: str,
     return k_list, wcss, elbow_k
 
 
+def analyze_clusters(df: pd.DataFrame, labels: np.ndarray, output_dir: str):
+    """
+    Examine characteristics of each cluster by computing mean/std of numeric
+    features and the class label, plus ocean_proximity distribution.
+
+    df        : original dataframe (with median_house_value)
+    labels    : cluster assignments for each row in df
+    output_dir: directory where per-cluster stats will be saved
+    """
+    df_clusters = df.copy()
+    df_clusters["cluster"] = labels
+
+    # Numeric features + class label
+    numeric_cols = [
+        "longitude",
+        "latitude",
+        "housing_median_age",
+        "total_rooms",
+        "total_bedrooms",
+        "population",
+        "households",
+        "median_income",
+        "median_house_value",  # class label
+    ]
+    cat_col = "ocean_proximity"
+
+    grouped = df_clusters.groupby("cluster")
+
+    print("\n=== Per-cluster characteristics ===")
+    for cid, group in grouped:
+        print(f"\n--- Cluster {cid} (n = {len(group)}) ---")
+
+        # Means and standard deviations of numeric features + label
+        means = group[numeric_cols].mean()
+        stds = group[numeric_cols].std()
+
+        print("Means:")
+        print(means)
+        print("\nStandard deviations:")
+        print(stds)
+
+        # Categorical distribution for ocean_proximity
+        print("\nOcean proximity distribution (proportion):")
+        print(group[cat_col].value_counts(normalize=True))
+
+        # Save to CSV for easier inspection / LaTeX tables later
+        stats_df = pd.DataFrame({
+            "mean": means,
+            "std": stds,
+        })
+        out_path = os.path.join(output_dir, f"cluster_{cid}_stats.csv")
+        stats_df.to_csv(out_path)
+        # Optional: save category distribution as well
+        prox_path = os.path.join(output_dir, f"cluster_{cid}_ocean_proximity.csv")
+        group[cat_col].value_counts(normalize=True).to_csv(prox_path)
+
 def main():
     if len(sys.argv) < 3:
         print("Usage: python zhao1297-kmean.py housing.csv output_dir")
@@ -344,6 +400,8 @@ def main():
         f.write("Cluster sizes:\n")
         for cid, cnt in zip(unique, counts):
             f.write(f"  Cluster {cid}: {cnt} points\n")
+            
+    analyze_clusters(df, labels, output_dir)
 
 
 if __name__ == "__main__":
