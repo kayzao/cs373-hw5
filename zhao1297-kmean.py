@@ -361,7 +361,7 @@ def main():
     X_norm, cluster_features = preprocess_for_clustering(df)
 
     # Range of k values to test
-    k_values = range(2, 11)
+    k_values = range(2, 21)
 
     # Silhouette analysis
     ks_sil, sil_scores = silhouette_analysis(X_norm, k_values, output_dir)
